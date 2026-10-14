@@ -2,21 +2,40 @@
 
 **Simple statistical analysis and data visualization in R for biomedical researchers.**
 
-`cstats` is a lightweight R toolkit designed to make statistical analysis and data visualization accessible to researchers with minimal programming experience.
+`cstats` is a lightweight R toolkit designed to make statistical analysis and data visualization accessible to biomedical researchers with minimal programming experience.
 
-It provides a straightforward workflow for importing experimental data, defining variables and factors, aggregating replicates, performing statistical tests, and generating publication-oriented plots.
+It provides a straightforward workflow for importing experimental data, defining factors and variables, aggregating replicates, performing statistical tests, and generating plots with statistical significance annotations.
 
 ## Features
 
 - **Data import:** Read tabular datasets and handle comma decimal separators.
-- **Experimental design:** Define factors, quantitative variables, and replicate identifiers.
+- **Experimental design:** Define experimental factors, quantitative variables, and replicate identifiers.
 - **Data aggregation:** Aggregate technical replicates using group means.
 - **Statistical analysis:** Two-way ANOVA, Tukey post hoc comparisons, Welch's t-tests, and Wilcoxon rank-sum tests.
-- **Visualization:** Generate bar plots displaying individual observations, mean ± SD, and statistical significance annotations.
+- **Data visualization:** Generate bar plots with individual observations, mean ± SD, and statistical significance annotations.
+
+## Repository structure
+
+```text
+cstats/
+├── README.md
+├── cstats.R
+└── training/
+    ├── tutorial.xlsx
+    └── tutorial.R
+```
+
+**Files:**
+
+- `cstats.R` — Main statistical analysis and visualization toolkit.
+- `training/tutorial.xlsx` — Synthetic experimental dataset for training, including the experimental design and example data.
+- `training/tutorial.R` — Step-by-step tutorial demonstrating data manipulation, statistical analysis, and visualization using `cstats`.
 
 ## Requirements
 
-Install R and RStudio, then install the required packages:
+Install [R](https://www.r-project.org/) and optionally [RStudio](https://posit.co/download/rstudio-desktop/).
+
+Install the required R packages:
 
 ```r
 install.packages(c(
@@ -27,7 +46,9 @@ install.packages(c(
 
 ## Getting started
 
-Download `cstats.R` and the example dataset from this repository.
+Clone or download this repository.
+
+Open RStudio and set the working directory to the repository root, where `cstats.R` is located.
 
 Load the toolkit:
 
@@ -35,59 +56,116 @@ Load the toolkit:
 source("cstats.R")
 ```
 
-Import the data:
+The toolkit functions are now available in your R session.
+
+### Import experimental data
+
+`cstats` reads tabular text files (tab-separated values).
+
+For example, after exporting the `R_DATA` worksheet from `training/tutorial.xlsx` as a CSV file:
 
 ```r
-df <- cstats.read("data.csv", separator = ",")
+data <- cstats.read("training/tutorial.csv")
 ```
 
-Define experimental factors and variables:
+The CSV file must first be exported from Excel; it is not included separately in the repository.
+
+### Define experimental factors and variables
 
 ```r
-df <- cstats.set_factors(df, c("Time", "Treatment"))
-df <- cstats.set_vars(df, c("Viability", "Marker", "Proliferation"))
-df <- cstats.set_reps(df, "BioRep")
+data <- cstats.set_factors(data, c("Time", "Treatment"))
+
+data <- cstats.set_vars(data, c("Viability", "Marker", "Proliferation"))
+
+data <- cstats.set_reps(data, "BioRep")
 ```
 
-Aggregate technical replicates:
+### Aggregate technical replicates
 
 ```r
-df_agg <- cstats.aggregate(df)
+data_agg <- cstats.aggregate(data)
 ```
 
-Perform statistical analysis:
+This computes mean values within the groups defined by experimental factors and replicate identifiers.
+
+### Perform statistical analysis
+
+Two-way ANOVA:
 
 ```r
-anova_results <- cstats.2wanova(df_agg)
-tukey_results <- cstats.tukey(df_agg, "Viability")
+anova_results <- cstats.2wanova(data_agg)
 ```
 
-Generate plots:
+Tukey post hoc comparisons:
 
 ```r
-plots <- cstats.barplot.tukey(df_agg, "Viability")
+tukey_results <- cstats.tukey(data_agg, "Viability")
+```
+
+Welch's t-tests:
+
+```r
+t_results <- cstats.t(data_agg, "Viability", base = "48")
+```
+
+Wilcoxon rank-sum tests:
+
+```r
+wilcox_results <- cstats.wilcox(data_agg, "Viability", base = "48")
+```
+
+### Generate plots
+
+```r
+plots <- cstats.barplot.tukey(data_agg, "Viability")
+
 plots[[1]]
 ```
 
+Additional plotting functions:
+
+```r
+cstats.barplot.t(data_agg, "Viability")
+cstats.barplot.wilcox(data_agg, "Viability")
+```
+
+These functions return lists of `ggplot2` objects that can be further customized.
+
+## Training tutorial
+
+A practical training example is available in the `training/` directory.
+
+The tutorial demonstrates a complete workflow:
+
+1. Preparing experimental data in Excel.
+2. Importing and manipulating data in R.
+3. Loading `cstats`.
+4. Defining experimental design.
+5. Aggregating technical replicates.
+6. Performing statistical tests.
+7. Generating plots with statistical annotations.
+
+**Training files:**
+
+- [Synthetic experimental dataset](training/tutorial.xlsx)
+- [R training tutorial](training/tutorial.R)
+
+The synthetic dataset represents a cell culture experiment with three experimental conditions (Control, Drug0, Drug1), nine time points, biological and technical replicates, and three quantitative measurements.
+
+The training data are entirely synthetic and intended for educational purposes.
+
 ## Statistical considerations
 
-The toolkit currently supports independent-sample comparisons and standard two-way ANOVA.
+Users are responsible for selecting appropriate statistical tests and verifying their assumptions.
 
-Users should verify experimental independence, model assumptions, and the appropriate unit of replication before performing statistical tests.
+Important considerations:
 
-Pairwise t-tests and Wilcoxon tests do not currently apply multiple-comparison adjustments.
-
-## Example dataset
-
-The repository includes a fully synthetic cell culture dataset for training purposes, featuring:
-
-- Three experimental conditions: Control, Drug0, and Drug1.
-- Nine time points.
-- Four biological replicates and three technical replicates.
-- Three quantitative measurements: cell viability, marker expression, and proliferation.
-
-The accompanying Excel workbook illustrates how experimental data can be organized and consolidated into a format suitable for R.
+- Technical replicates should not be treated as independent biological observations.
+- The current t-test and Wilcoxon implementations assume independent samples.
+- Pairwise t-tests and Wilcoxon tests do not currently adjust for multiple comparisons.
+- Two-way ANOVA assumes an appropriate experimental design and model structure.
+- Aggregation must preserve the correct experimental unit.
 
 ## License
 
-License to be defined.
+No license has been specified yet.
