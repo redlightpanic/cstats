@@ -44,7 +44,7 @@ df <- cstats.read("data.csv", separator = ",")
 Define experimental factors and variables:
 
 ```r
-df <- cstats.set_factors(df, c("STAGE", "Treatment"))
+df <- cstats.set_factors(df, c("Time", "Treatment"))
 df <- cstats.set_vars(df, c("Viability", "Marker", "Proliferation"))
 df <- cstats.set_reps(df, "BioRep")
 ```
@@ -68,8 +68,6 @@ Generate plots:
 plots <- cstats.barplot.tukey(df_agg, "Viability")
 plots[[1]]
 ```
-
-**Note:** The example assumes that the dataset already contains a `STAGE` column. This can be created from the original time points using `dplyr::mutate()`.
 
 ## Statistical considerations
 
