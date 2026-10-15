@@ -65,7 +65,7 @@ The toolkit functions are now available in your R session.
 For example, after exporting the `R_DATA` worksheet from `training/tutorial.xlsx` as a CSV file:
 
 ```r
-data <- cstats.read("training/tutorial.csv")
+data <- cstats.read("training/tutorial.txt")
 ```
 
 The CSV file must first be exported from Excel; it is not included separately in the repository.
