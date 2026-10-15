@@ -131,7 +131,7 @@ p2 <- plots_tukey$T48
 p3 <- plots_tukey$T72
 p1 | p2 | p3
 
-# Plot using Welsch t-test statistical test
+# Plot using Welch t-test statistical test
 plots_t <- cstats.barplot.t(df_agg, "Marker")
 plots_t$T48
 
