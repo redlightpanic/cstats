@@ -20,16 +20,21 @@ It provides a straightforward workflow for importing experimental data, defining
 cstats/
 ├── README.md
 ├── cstats.R
+├── cstats-function-reference.pdf
+├── .gitignore
 └── training/
     ├── tutorial.xlsx
-    └── tutorial.R
+    ├── tutorial.R
+    └── training.pptx
 ```
 
 **Files:**
 
 - `cstats.R` — Main statistical analysis and visualization toolkit.
+- [Function reference](cstats-function-reference.pdf) — PDF guide to the functions in `cstats.R` (excluding `cstats.parse`).
 - `training/tutorial.xlsx` — Synthetic experimental dataset for training, including the experimental design and example data.
 - `training/tutorial.R` — Step-by-step tutorial demonstrating data manipulation, statistical analysis, and visualization using `cstats`.
+- `training/training.pptx` — Slide deck for the training tutorial.
 
 ## Requirements
 
@@ -57,6 +62,10 @@ source("cstats.R")
 ```
 
 The toolkit functions are now available in your R session.
+
+### Function reference
+
+See the [cstats function reference](cstats-function-reference.pdf) for an explanation of each function, its arguments, return values, and statistical considerations.
 
 ### Import experimental data
 
