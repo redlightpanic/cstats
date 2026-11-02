@@ -138,4 +138,3 @@ plots_t$T48
 # Plot using Wilcoxon Ranked Sum statistical test
 plots_wilcox <- cstats.barplot.wilcox(df_agg, "Proliferation")
 plots_wilcox$T72
-

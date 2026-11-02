@@ -71,11 +71,76 @@ cstats.aggregate <- function(df) {
   group_cols <- c(factors, reps)
   df_agg <- df %>% group_by(across(all_of(group_cols))) %>% summarise(across(all_of(vars), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
   
+  df_agg <- as.data.frame(df_agg)
   attr(df_agg, "F") <- factors
   attr(df_agg, "V") <- vars
   attr(df_agg, "R") <- reps
-  
-  return(as.data.frame(df_agg))
+
+  return(df_agg)
+}
+
+.cstats_replicate_cols <- function(df) {
+  reps <- attr(df, "R")
+  if (is.null(reps) || length(reps) == 0) {
+    warning(
+      "Paired comparison requested without replicate IDs. Use cstats.set_reps() before running paired tests.",
+      call. = FALSE
+    )
+    stop("Cannot perform paired comparisons without replicate IDs.", call. = FALSE)
+  }
+
+  missing_cols <- setdiff(reps, names(df))
+  if (length(missing_cols) > 0) {
+    stop("Replicate ID columns are missing from the data: ", paste(missing_cols, collapse = ", "))
+  }
+
+  reps
+}
+
+.cstats_match_pairs <- function(group_a, group_b, var, replicate_cols) {
+  valid_ids_a <- complete.cases(group_a[, replicate_cols, drop = FALSE])
+  valid_ids_b <- complete.cases(group_b[, replicate_cols, drop = FALSE])
+  missing_ids <- sum(!valid_ids_a) + sum(!valid_ids_b)
+  if (missing_ids > 0) {
+    warning(missing_ids, " observations with missing replicate IDs were excluded from paired comparisons.", call. = FALSE)
+  }
+  group_a <- group_a[valid_ids_a, , drop = FALSE]
+  group_b <- group_b[valid_ids_b, , drop = FALSE]
+
+  if (anyDuplicated(group_a[, replicate_cols, drop = FALSE])) {
+    stop("Replicate IDs must identify one observation per group before paired comparisons.")
+  }
+  if (anyDuplicated(group_b[, replicate_cols, drop = FALSE])) {
+    stop("Replicate IDs must identify one observation per group before paired comparisons.")
+  }
+
+  usable_a <- !is.na(group_a[[var]])
+  usable_b <- !is.na(group_b[[var]])
+  if (sum(!usable_a) + sum(!usable_b) > 0) {
+    warning("Rows with missing outcome values were excluded from paired comparisons.", call. = FALSE)
+  }
+  group_a <- group_a[usable_a, , drop = FALSE]
+  group_b <- group_b[usable_b, , drop = FALSE]
+
+  used_names <- c(names(group_a), names(group_b))
+  value_a_col <- make.unique(c(used_names, ".cstats_value_a"))[length(used_names) + 1]
+  value_b_col <- make.unique(c(used_names, value_a_col, ".cstats_value_b"))[length(used_names) + 2]
+
+  pairs_a <- group_a[, replicate_cols, drop = FALSE]
+  pairs_a[[value_a_col]] <- group_a[[var]]
+  pairs_b <- group_b[, replicate_cols, drop = FALSE]
+  pairs_b[[value_b_col]] <- group_b[[var]]
+
+  matched <- merge(pairs_a, pairs_b, by = replicate_cols, sort = FALSE)
+  unmatched <- nrow(group_a) + nrow(group_b) - 2 * nrow(matched)
+  if (unmatched > 0) {
+    warning(
+      unmatched, " observations without a matching replicate ID were excluded from this paired comparison.",
+      call. = FALSE
+    )
+  }
+
+  list(a = matched[[value_a_col]], b = matched[[value_b_col]])
 }
 
 ############################################################################
@@ -129,9 +194,10 @@ cstats.tukey <- function(df, var) {
 }
 
 # PAIRWISE TEST USING MANN-WHITNEY U-TEST
-cstats.wilcox <- function(df, var, base = NULL, altrn = "two.sided") {
+cstats.wilcox <- function(df, var, base = NULL, altrn = "two.sided", paired = FALSE) {
   factors <- attr(df, "F")
   vars <- attr(df, "V")
+  replicate_cols <- if (paired) .cstats_replicate_cols(df) else NULL
   
   if (is.null(factors) || length(factors) == 0) {stop("No factors defined. Please use cstats.set_factors.")}
   if (is.null(vars) || length(vars) == 0) {stop("No variables defined. Please use cstats.set_vars.")}
@@ -147,12 +213,20 @@ cstats.wilcox <- function(df, var, base = NULL, altrn = "two.sided") {
       facvals <- facvals[facvals != lvl1]
       for (lvl2 in facvals) {
         name <- paste(lvl1, lvl2, sep = "_")
-        Population_A <- df[df[[factors]] == lvl1, var]
-        Population_B <- df[df[[factors]] == lvl2, var]
+        group_a <- df[df[[factors]] == lvl1, , drop = FALSE]
+        group_b <- df[df[[factors]] == lvl2, , drop = FALSE]
+        if (paired) {
+          populations <- .cstats_match_pairs(group_a, group_b, var, replicate_cols)
+          Population_A <- populations$a
+          Population_B <- populations$b
+        } else {
+          Population_A <- group_a[[var]]
+          Population_B <- group_b[[var]]
+        }
         if(!(length(Population_A) > 1 && length(Population_B) > 1)) {
           cat(paste("Omitting ", lvl1, " vs ", lvl2, ". Not enough observations.\n"))
         } else {
-          results[[name]] <- wilcox.test(Population_A, Population_B, paired = F, alternative = altrn)
+          results[[name]] <- wilcox.test(Population_A, Population_B, paired = paired, alternative = altrn)
         }
       }
     }
@@ -167,12 +241,20 @@ cstats.wilcox <- function(df, var, base = NULL, altrn = "two.sided") {
       facvals <- facvals[facvals != lvl1]
       for (lvl2 in facvals) {
         name <- paste(base, lvl1, lvl2, sep = "_")
-        Population_A <- df[df[[conda]] == base & df[[condb]] == lvl1, var]
-        Population_B <- df[df[[conda]] == base & df[[condb]] == lvl2, var]
+        group_a <- df[df[[conda]] == base & df[[condb]] == lvl1, , drop = FALSE]
+        group_b <- df[df[[conda]] == base & df[[condb]] == lvl2, , drop = FALSE]
+        if (paired) {
+          populations <- .cstats_match_pairs(group_a, group_b, var, replicate_cols)
+          Population_A <- populations$a
+          Population_B <- populations$b
+        } else {
+          Population_A <- group_a[[var]]
+          Population_B <- group_b[[var]]
+        }
         if(!(length(Population_A) > 1 && length(Population_B) > 1)) {
           cat(paste("Omitting ", lvl1, " vs ", lvl2, ". Not enough observations.\n"))
         } else {
-          results[[name]] <- wilcox.test(Population_A, Population_B, paired = F, alternative = altrn)
+          results[[name]] <- wilcox.test(Population_A, Population_B, paired = paired, alternative = altrn)
         }
       }
     }
@@ -181,9 +263,10 @@ cstats.wilcox <- function(df, var, base = NULL, altrn = "two.sided") {
 }
 
 # PAIRWISE TEST USING WELSCH T-TEST
-cstats.t <- function(df, var, base = NULL, altrn = "two.sided") {
+cstats.t <- function(df, var, base = NULL, altrn = "two.sided", paired = FALSE) {
   factors <- attr(df, "F")
   vars <- attr(df, "V")
+  replicate_cols <- if (paired) .cstats_replicate_cols(df) else NULL
   
   if (is.null(factors) || length(factors) == 0) {stop("No factors defined. Please use cstats.set_factors.")}
   if (is.null(vars) || length(vars) == 0) {stop("No variables defined. Please use cstats.set_vars.")}
@@ -199,12 +282,20 @@ cstats.t <- function(df, var, base = NULL, altrn = "two.sided") {
       facvals <- facvals[facvals != lvl1]
       for (lvl2 in facvals) {
         name <- paste(lvl1, lvl2, sep = "_")
-        Population_A <- df[df[[factors]] == lvl1, var]
-        Population_B <- df[df[[factors]] == lvl2, var]
+        group_a <- df[df[[factors]] == lvl1, , drop = FALSE]
+        group_b <- df[df[[factors]] == lvl2, , drop = FALSE]
+        if (paired) {
+          populations <- .cstats_match_pairs(group_a, group_b, var, replicate_cols)
+          Population_A <- populations$a
+          Population_B <- populations$b
+        } else {
+          Population_A <- group_a[[var]]
+          Population_B <- group_b[[var]]
+        }
         if(!(length(Population_A) > 1 && length(Population_B) > 1)) {
           cat(paste("Omitting ", lvl1, " vs ", lvl2, ". Not enough observations.\n"))
         } else {
-          results[[name]] <- t.test(Population_A, Population_B, paired = F, alternative = altrn)
+          results[[name]] <- t.test(Population_A, Population_B, paired = paired, alternative = altrn)
         }
       }
     }
@@ -219,12 +310,20 @@ cstats.t <- function(df, var, base = NULL, altrn = "two.sided") {
       facvals <- facvals[facvals != lvl1]
       for (lvl2 in facvals) {
         name <- paste(base, lvl1, lvl2, sep = "_")
-        Population_A <- df[df[[conda]] == base & df[[condb]] == lvl1, var]
-        Population_B <- df[df[[conda]] == base & df[[condb]] == lvl2, var]
+        group_a <- df[df[[conda]] == base & df[[condb]] == lvl1, , drop = FALSE]
+        group_b <- df[df[[conda]] == base & df[[condb]] == lvl2, , drop = FALSE]
+        if (paired) {
+          populations <- .cstats_match_pairs(group_a, group_b, var, replicate_cols)
+          Population_A <- populations$a
+          Population_B <- populations$b
+        } else {
+          Population_A <- group_a[[var]]
+          Population_B <- group_b[[var]]
+        }
         if(!(length(Population_A) > 1 && length(Population_B) > 1)) {
           cat(paste("Omitting ", lvl1, " vs ", lvl2, ". Not enough observations.\n"))
         } else {
-          results[[name]] <- t.test(Population_A, Population_B, paired = F, alternative = altrn)
+          results[[name]] <- t.test(Population_A, Population_B, paired = paired, alternative = altrn)
         }
       }
     }
@@ -385,9 +484,10 @@ cstats.barplot.tukey <- function(df, var) {
 
 
 # Plot barplots using wilcox test
-cstats.barplot.wilcox <- function(df, var) {
+cstats.barplot.wilcox <- function(df, var, paired = FALSE) {
   factors <- attr(df, "F")
   vars <- attr(df, "V")
+  replicate_cols <- if (paired) .cstats_replicate_cols(df) else NULL
   
   if (is.null(factors) || length(factors) != 2) {
     stop("Es requereixen exactament 2 factors definits (ex: stage i condition).")
@@ -439,11 +539,19 @@ cstats.barplot.wilcox <- function(df, var) {
           lvl1 <- conditions[i]
           lvl2 <- conditions[j]
           
-          popA <- df_stage %>% filter(.data[[f_cond]] == lvl1) %>% pull(.data[[var]])
-          popB <- df_stage %>% filter(.data[[f_cond]] == lvl2) %>% pull(.data[[var]])
+          group_a <- df_stage %>% filter(.data[[f_cond]] == lvl1)
+          group_b <- df_stage %>% filter(.data[[f_cond]] == lvl2)
+          if (paired) {
+            populations <- .cstats_match_pairs(group_a, group_b, var, replicate_cols)
+            popA <- populations$a
+            popB <- populations$b
+          } else {
+            popA <- group_a[[var]]
+            popB <- group_b[[var]]
+          }
           
           if (length(popA) > 1 && length(popB) > 1) {
-            test_res <- wilcox.test(popA, popB, paired = FALSE)
+            test_res <- wilcox.test(popA, popB, paired = paired)
             stars <- p_to_stars(test_res$p.value)
             
             if (stars != "ns") {
@@ -522,9 +630,10 @@ cstats.barplot.wilcox <- function(df, var) {
 }
 
 # Plot barplots using t.test
-cstats.barplot.t <- function(df, var) {
+cstats.barplot.t <- function(df, var, paired = FALSE) {
   factors <- attr(df, "F")
   vars <- attr(df, "V")
+  replicate_cols <- if (paired) .cstats_replicate_cols(df) else NULL
   
   if (is.null(factors) || length(factors) != 2) {
     stop("Es requereixen exactament 2 factors definits (ex: stage i condition).")
@@ -576,11 +685,19 @@ cstats.barplot.t <- function(df, var) {
           lvl1 <- conditions[i]
           lvl2 <- conditions[j]
           
-          popA <- df_stage %>% filter(.data[[f_cond]] == lvl1) %>% pull(.data[[var]])
-          popB <- df_stage %>% filter(.data[[f_cond]] == lvl2) %>% pull(.data[[var]])
+          group_a <- df_stage %>% filter(.data[[f_cond]] == lvl1)
+          group_b <- df_stage %>% filter(.data[[f_cond]] == lvl2)
+          if (paired) {
+            populations <- .cstats_match_pairs(group_a, group_b, var, replicate_cols)
+            popA <- populations$a
+            popB <- populations$b
+          } else {
+            popA <- group_a[[var]]
+            popB <- group_b[[var]]
+          }
           
           if (length(popA) > 1 && length(popB) > 1) {
-            test_res <- t.test(popA, popB, paired = FALSE)
+            test_res <- t.test(popA, popB, paired = paired)
             stars <- p_to_stars(test_res$p.value)
             
             if (stars != "ns") {
